@@ -3,5 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/lib/arduino_midi_library" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/lib/libsmf" vcs="Git" />
   </component>
 </project>

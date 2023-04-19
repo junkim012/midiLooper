@@ -21,6 +21,7 @@ How MIDI Notes are being read: [discuss with TA?]
   - Arduino's MIDI library reads 
     - very helpful guide: https://www.instructables.com/Send-and-Receive-MIDI-with-Arduino/
   - https://github.com/PortMidi/portmidi
+  - https://portmedia.sourceforge.net/portmidi/
 
 When MIDI notes are read, the function 
 1. checks which channel is selected
@@ -39,3 +40,11 @@ Other outstanding questions (good to ask TA)
   - think the MIDI library handles this 
 - can the 4 MIDI channels we have combined into one when sending to the computer? 
 - if not how does it send 4 channels at once to the computer? 
+
+
+Links
+- MIDI smf
+  - https://github.com/stump/libsmf
+- Glib
+  - https://docs.gtk.org/glib/
+  - brew install meson ninja 
