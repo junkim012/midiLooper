@@ -15,13 +15,38 @@
 // does prescaler need to change?
 #define BAUD_PRESCALER (((F_CPU / (BAUD_RATE * 16UL))) - 1)
 //#define BAUD_PRESCALER 31
+#define MIN_INTERVAL_MS 1000 // minimum interval in milliseconds between array indexing
+#define MAX_INTERVAL_MS 5000 // maximum interval in milliseconds between array indexing
+
+#define TRACK_LENGTH 20
+
 char String[25];
 
 int channel;
 
+volatile int count = 0;
+int targetCount = 0;
+
+volatile int record1_armed = 0;
 volatile int record1 = 0;
-int track1[300];
+
+//int track1[20][3] = {
+//        {0x93, 0x24, 0x40} ,
+//        {0x00, 0x00, 0x00} ,
+//        {0x00, 0x00, 0x00},
+//        {0x83, 0x24, 0x40},
+//        {0x00, 0x00, 0x00} ,
+//        {0x00, 0x00, 0x00},
+//        {0x93, 0x24, 0x40} ,
+//        {0x00, 0x00, 0x00} ,
+//        {0x00, 0x00, 0x00}
+//};
+int track1[TRACK_LENGTH][3];
 int step = 0;
+
+// timing stuff
+// TNCT0 counts from 0 to OCR0A and move onto the next
+// step variable increments everytime OCR0A is reached
 
 void noteOn(int cmd, int pitch, int velocity) {
     UART_write(cmd); // 1 byte
@@ -31,7 +56,7 @@ void noteOn(int cmd, int pitch, int velocity) {
 
 ISR(PCINT0_vect) {
     if (PINB & (1 << PINB0)) {
-        record1 = record1 ^ 1;
+        record1_armed = 1;
 
         PORTD |= (1 << PORTD2);
         PORTD &= ~(1 << PORTD3);
@@ -94,6 +119,17 @@ void Initialize() {
     PORTB |= (1<<PORTB2); // enable pull up resistor on PB2
     PCMSK0 |= (1<<PCINT2); // enable trigger for PCINT2
 
+    // TIMER for BPM
+    // CTC on OCR1A
+    OCR1A = 65535; // 16.384 miliseconds
+    TCCR1A = 0;
+    TCCR1B = 0;
+    TCNT1 = 0;
+//    OCR1A = MIN_INTERVAL_MS * (F_CPU / 1000) / 64 - 1; // Set Timer1 compare value to minimum interval
+    TCCR1B |= (1 << WGM12); // Set Timer1 to CTC mode
+    TCCR1B |= (1 << CS11) | (1 << CS10); // Set Timer1 prescaler to 64
+    TIMSK1 |= (1 << OCIE1A); // Enable Timer1 compare interrupt
+
 
     // POTENTIOMETER
     // Reading in potentiometer
@@ -128,7 +164,6 @@ void Initialize() {
 
 void process_midi_message(uint8_t status_byte, uint8_t data_byte1, uint8_t data_byte2) {
 
-
     uint8_t message_type = status_byte & 0xF0;
 
     if (message_type >> 4 == 9 || message_type >> 4 == 8) {
@@ -136,14 +171,25 @@ void process_midi_message(uint8_t status_byte, uint8_t data_byte1, uint8_t data_
         char printData[25];
 //        sprintf(printData, "ON: %X %X %X\n", status_byte, data_byte1, data_byte2);
 //        UART_putstring(printData);
-        UART_write(status_byte); // 1 byte
-        UART_write(data_byte1); // 1 byte
-        UART_write(data_byte2); // 1 byte
+        UART_send(status_byte); // 1 byte
+        UART_send(data_byte1); // 1 byte
+        UART_send(data_byte2); // 1 byte
 
-//        int concat = (status_byte << 16) | (data_byte1 << 8) | (data_byte2);
 //        char printConcat[25];
 //        sprintf(printConcat, "STEP: %d CONCAT: %X\n", step, concat);
 //        track1[step] = concat;
+        if (record1 == 1) {
+//            char printRecord[25];
+//            sprintf(printRecord, "RECORDING NOTE %X at STEP %d\n", data_byte1, step);
+//            UART_putstring(printRecord);
+            track1[step][0] = status_byte;
+            track1[step][1] = data_byte1;
+            track1[step][2] = data_byte2;
+        }
+//        if (record2 == 2) {
+//
+//        }
+
     }
 }
 
@@ -183,7 +229,62 @@ void process_midi_data(uint8_t midi_byte) {
 
 }
 
+//void sendMidiSignal(int midi) {
+//    // check if valid midi signal
+//    if (midi[0] >> 4 == 9 || midi[0] >> 4 == 8) {
+//        UART_send(midi >> 16 & 0xFF);
+//        UART_send(midi >> 8 & 0xFF);
+//        UART_send(midi & 0xFF);
+//    }
+//}
 
+ISR(TIMER1_COMPA_vect) {
+
+    if (count == 1) {
+        // Timer1 compare interrupt service routin
+        if (step == 0 && record1_armed) {
+//            char printArm[25];
+//            sprintf(printArm, "RECORD START");
+//            UART_putstring(printArm);
+            record1 = 1;
+        } else if (step == 19 && record1 == 1) {
+//            char printStop[25];
+//            sprintf(printStop, "RECORDS STOP");
+//            UART_putstring(printStop);
+            record1 = 0;
+            record1_armed = 0;
+        }
+
+
+//        char printStep[50];
+//        sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u record1_armed: %d record1: %d \n\n",
+//                step, ADC, OCR1A, record1_armed, record1);
+//        UART_putstring(printStep);
+
+        // Do something with the midi signal at the current step, for example:
+//    char printNote[25];
+//    sprintf(printNote, "NOTE: %X, %X, %X\n",
+//            track1[step][0], track1[step][1], track1[step][2]);
+//    UART_putstring(printNote);
+
+        if (track1[step][0] >> 4 == 9 || track1[step][0] >> 4 == 8) {
+            UART_send(track1[step][0]);
+            UART_send(track1[step][1]);
+            UART_send(track1[step][2]);
+        }
+        step++; // Increment the step index
+        if (step >= TRACK_LENGTH) {
+            step = 0; // Reset step index when it reaches the end of the array
+        }
+        count = 0;
+    } else {
+        count++;
+    }
+}
+
+long map(long x, long in_min, long in_max, long out_min, long out_max) {
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 
 int main(void)
 {
@@ -205,103 +306,38 @@ int main(void)
     int sequence[300];
     while(1)
     {
+//        int printTrack[25];
+//        sprintf(printTrack, "TRACK: %X\n", track1[0]);
+//        UART_putstring(printTrack);
         // ADC doesn't work with UART
 //        int printADC[25];
 //        sprintf(printADC, "ADC: %u\n", ADC);
 //        UART_putstring(printADC);
 
-        cli();
+//        int interval = map(ADC, 0, 1023, MIN_INTERVAL_MS, MAX_INTERVAL_MS);
+//        int printInterval[25];
+//        sprintf(printInterval, "INTERVAL: %d\n", interval);
+//        UART_putstring(printInterval);
+
+        // 10000 * 16M / 1000 / 64 -1 = 2.5 million
+        // 1000 => 250K
+//        targetCount = interval / ((OCR1A + 1) * 64 / F_CPU * 1000);
+//        int printTarget[25];
+//        sprintf(printTarget, "INTERVAL: %d\n", printTarget);
+//        UART_putstring(printTarget);
+
+//        OCR1A = interval * (F_CPU / 1000) / 64 - 1;
+
+//        int printOCR1A[25];
+//        sprintf(printOCR1A,  "OCR1A: %u\n", OCR1A);
+//        UART_putstring(printOCR1A);
+
         unsigned char data = UART_receive();
-        char printData[25];
-        sprintf(printData, "DATA: %X\n", data);
-        UART_putstring(printData);
+
+//        char printData[25];
+//        sprintf(printData, "DATA: %X\n", data);
+//        UART_putstring(printData);
 
         process_midi_data(data);
-        sei();
-//        if (step == 300) {
-//            step = 0;
-//        } else {
-//            step = step + 1;
-//        }
-
-//        _delay_ms(1000);
-
-//        int note1 = 0x48;
-//        int channel1 = 0x90;
-//        int channel2 = 0x92;
-//        noteOn(channel1, note1, velocity);
-//        _delay_ms(1000);
-
-        // check if pin is low
-//        if (!PINB & (1<<PB1)) {v
-//            // turn on LED
-//            UART_write("hihihi");
-//        }
-
-        // add incoming to sequence array
-//        if (!(UCSR0A & (1<<RXC0))) {
-//            int printData[25];
-//            int hi = 0x20;
-//            sprintf(printData, "%x\n", hi);
-//            UART_putstring(printData);
-//            int data = UART_receive();
-//            sequence[step] = data; // should overflow
-//            step = step + 1;
-//        }
-
-
-
-//        if (PORTB & (1<<PB1)) {
-//            // just print something for indication
-//            int printData[25];
-//            int hi = 0x20;
-//            sprintf(printData, "%x\n", hi);
-//            UART_putstring(printData);
-//
-//            for (int i = 0; i < 300; i = i+3) {
-//                noteOn(sequence[i],
-//                       sequence[i+1],
-//                       sequence[i+2]);
-//                _delay_ms(1000);
-//            }
-//        }
-//
-//        int printData[25];
-//        sprintf(printData, "%x\n", data);
-//        UART_putstring(printData);
-//        if (data == 0x91) {
-//            UART_putstring("2");
-//        }
-
-        // play the 2d array
-//        for (int i = 0; i < seqLength; i++ ) {
-//            noteOn(channel1, track[0][i], velocity);
-//            noteOn(channel1, track[1][i], velocity);
-//            noteOn(channel1, track[2][i], velocity);
-//            _delay_ms(100);
-//            counter++;
-//            if (i == 4) {
-//                i = 0;
-//            }
-//        }
-//        counter++;
-//        if (counter == loopLength) {
-//            counter = 0;
-//        }
-//
-//        noteOn(channel2, note1, velocity);
-//        noteOn(channel2, note2, velocity);
-//        noteOn(channel2, note3, velocity);
-//        noteOn(channel2, note4, velocity);
-
-
-//        noteOn(channel3, note, velocity);
-
-        // write to the standard 5 poles DIN cable
-        // 31250 bits per second
-
-        // Digital pin 1 -> MIDI jack pin 5
-        // Midi Jack pin 2 ground
-        // Midi Jack pin 4 to +5V through a 220 ohm resistor
     }
 }

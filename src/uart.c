@@ -17,7 +17,7 @@ void UART_init(int BAUD_PRESCALER)
     UBRR0H = (unsigned char)(BAUD_PRESCALER>>8);
     UBRR0L = (unsigned char)BAUD_PRESCALER;
     //Enable receiver and transmitter
-    UCSR0B = (1<<RXEN0)|(1<<TXEN0)|(1 << RXCIE0);
+    UCSR0B = (1<<RXEN0)|(1<<TXEN0); //|(1 << RXCIE0);
     /* Set frame format: 2 stop bits, 8 data bits */
     UCSR0C = (1<<UCSZ01) | (1<<UCSZ00); // 8 data bits
     UCSR0C |= (1<<USBS0); // 2 stop bits
@@ -36,10 +36,6 @@ unsigned char UART_receive(void)
     // RXC0 is whether there is unread data
     while(!(UCSR0A & (1<<RXC0)));
     return UDR0;
-}
-
-void UART_write(int data) {
-    UART_send(data);
 }
 
 void UART_putstring(char* StringPtr)
