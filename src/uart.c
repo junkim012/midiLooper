@@ -33,7 +33,13 @@ void UART_send(unsigned char data)
 
 unsigned char UART_receive(void)
 {
-    // RXC0 is whether there is unread data
+    // non blocking
+//    if (UCSR0A & (1 << RXC0)) {
+//        return UDR0;
+//    } else {
+//        return 0;
+//    }
+//     RXC0 is whether there is unread data
     while(!(UCSR0A & (1<<RXC0)));
     return UDR0;
 }

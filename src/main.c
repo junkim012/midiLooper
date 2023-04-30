@@ -15,8 +15,8 @@
 // does prescaler need to change?
 #define BAUD_PRESCALER (((F_CPU / (BAUD_RATE * 16UL))) - 1)
 //#define BAUD_PRESCALER 31
-#define MIN_INTERVAL_MS 1000 // minimum interval in milliseconds between array indexing
-#define MAX_INTERVAL_MS 5000 // maximum interval in milliseconds between array indexing
+#define MIN_INTERVAL_MS 100 // minimum interval in milliseconds between array indexing
+#define MAX_INTERVAL_MS 2000 // maximum interval in milliseconds between array indexing
 
 #define TRACK_LENGTH 20
 
@@ -25,10 +25,14 @@ char String[25];
 int channel;
 
 volatile int count = 0;
-int targetCount = 0;
+int targetCount = 3;
 
 volatile int record1_armed = 0;
 volatile int record1 = 0;
+volatile int record2_armed = 0;
+volatile int record2 = 0;
+volatile int record3_armed = 0;
+volatile int record3 = 0;
 
 //int track1[20][3] = {
 //        {0x93, 0x24, 0x40} ,
@@ -42,7 +46,9 @@ volatile int record1 = 0;
 //        {0x00, 0x00, 0x00}
 //};
 int track1[TRACK_LENGTH][3];
-int step = 0;
+int track2[TRACK_LENGTH][3];
+int track3[TRACK_LENGTH][3];
+int step = 0; // volatile?
 
 // timing stuff
 // TNCT0 counts from 0 to OCR0A and move onto the next
@@ -64,12 +70,16 @@ ISR(PCINT0_vect) {
         PORTD &= ~(1 << PORTD4);
         channel = 0x91; // switch channel to 2
     } else if (PINB & (1 << PINB1)) {
+        record2_armed = 1;
+
         PORTD |= (1 << PORTD3);
         PORTD &= ~(1 << PORTD5);
         PORTD &= ~(1 << PORTD2);
         PORTD &= ~(1 << PORTD4);
         channel = 0x91; // switch channel to 2
     } else if (PINB & (1 << PINB2)) {
+        record3_armed = 1;
+
         PORTD |= (1 << PORTD4);
         PORTD &= ~(1 << PORTD5);
         PORTD &= ~(1 << PORTD3);
@@ -154,8 +164,9 @@ void Initialize() {
     // Disable digital input buffer on ADC pin
     DIDR0 |= (1 << ADC0D);
     // Enable ADC
-    ADCSRA |= (1 << ADEN);
+    ADCSRA |= (1 << ADEN) | (1 << ADIE);  // Enable ADC and ADC interrupt
     // ADC interrupt
+
     // start conversion
     ADCSRA |= (1 << ADSC);
 
@@ -186,9 +197,16 @@ void process_midi_message(uint8_t status_byte, uint8_t data_byte1, uint8_t data_
             track1[step][1] = data_byte1;
             track1[step][2] = data_byte2;
         }
-//        if (record2 == 2) {
-//
-//        }
+        if (record2 == 1) {
+            track2[step][0] = status_byte;
+            track2[step][1] = data_byte1;
+            track2[step][2] = data_byte2;
+        }
+        if (record3 == 1) {
+            track3[step][0] = status_byte;
+            track3[step][1] = data_byte1;
+            track3[step][2] = data_byte2;
+        }
 
     }
 }
@@ -239,39 +257,61 @@ void process_midi_data(uint8_t midi_byte) {
 //}
 
 ISR(TIMER1_COMPA_vect) {
-
-    if (count == 1) {
+//    char printCount[25];
+//    sprintf(printCount, "COUNT: %d TARGET: %d\n", count, targetCount);
+//    UART_putstring(printCount);
+    char printCount[25];
+    sprintf(printCount, "TIMER ISR\n");
+    UART_putstring(printCount);
+    if (count >= targetCount) {
         // Timer1 compare interrupt service routin
-        if (step == 0 && record1_armed) {
+        if (step == 0 && (record1_armed || record2_armed || record3_armed)) {
 //            char printArm[25];
 //            sprintf(printArm, "RECORD START");
 //            UART_putstring(printArm);
-            record1 = 1;
-        } else if (step == 19 && record1 == 1) {
+            record1 = record1_armed ? 1 : 0;
+            record2 = record2_armed ? 1 : 0;
+            record3 = record3_armed ? 1 : 0;
+        } else if (step == 19 && (record1 == 1 || record2 == 1 || record3 == 1)) {
 //            char printStop[25];
 //            sprintf(printStop, "RECORDS STOP");
 //            UART_putstring(printStop);
+            if (record1 == 1) {
+                record1_armed = 1;
+            }
+            if (record2 == 1) {
+                record2_armed = 1;
+            }
+            if (record3 == 1) {
+                record3_armed = 1;
+            }
             record1 = 0;
-            record1_armed = 0;
+            record2 = 0;
+            record3 = 0;
         }
 
+        char printStep[50];
+        sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u record1_armed: %d record1: %d count: %d targetCount: %d\n\n",
+                step, ADC, OCR1A, record1_armed, record1, count, targetCount);
+        UART_putstring(printStep);
 
-//        char printStep[50];
-//        sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u record1_armed: %d record1: %d \n\n",
-//                step, ADC, OCR1A, record1_armed, record1);
-//        UART_putstring(printStep);
-
-        // Do something with the midi signal at the current step, for example:
-//    char printNote[25];
-//    sprintf(printNote, "NOTE: %X, %X, %X\n",
-//            track1[step][0], track1[step][1], track1[step][2]);
-//    UART_putstring(printNote);
-
+        // always plays whats in the track
         if (track1[step][0] >> 4 == 9 || track1[step][0] >> 4 == 8) {
             UART_send(track1[step][0]);
             UART_send(track1[step][1]);
             UART_send(track1[step][2]);
         }
+        if (track2[step][0] >> 4 == 9 || track2[step][0] >> 4 == 8) {
+            UART_send(track2[step][0]);
+            UART_send(track2[step][1]);
+            UART_send(track2[step][2]);
+        }
+        if (track3[step][0] >> 4 == 9 || track3[step][0] >> 4 == 8) {
+            UART_send(track3[step][0]);
+            UART_send(track3[step][1]);
+            UART_send(track3[step][2]);
+        }
+
         step++; // Increment the step index
         if (step >= TRACK_LENGTH) {
             step = 0; // Reset step index when it reaches the end of the array
@@ -282,16 +322,25 @@ ISR(TIMER1_COMPA_vect) {
     }
 }
 
+
 long map(long x, long in_min, long in_max, long out_min, long out_max) {
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+// ISR for ADC
+ISR(ADC_vect) {
+    int interval = map(ADC, 0, 1023, MIN_INTERVAL_MS, MAX_INTERVAL_MS);
+    uint32_t OCR1A_uint = (uint32_t) OCR1A;
+    int ms = ((OCR1A_uint + 1) * 64 * 1000 / F_CPU); // 262 ms
+    targetCount = interval / ms;
+
 }
 
 int main(void)
 {
     Initialize();
-    int loopLength = 10;
-    int counter = 0;
-    int seqLength = 5;
+    // set count to initial targetCount to immediately start at step 0?
+
     // 0x2E Bb
     // 0x30 C 3
     // 0x23 B 1
