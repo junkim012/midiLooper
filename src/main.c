@@ -15,8 +15,8 @@
 // does prescaler need to change?
 #define BAUD_PRESCALER (((F_CPU / (BAUD_RATE * 16UL))) - 1)
 //#define BAUD_PRESCALER 31
-#define MIN_INTERVAL_MS 1000 // minimum interval in milliseconds between array indexing
-#define MAX_INTERVAL_MS 5000 // maximum interval in milliseconds between array indexing
+#define MIN_INTERVAL_MS 100 // minimum interval in milliseconds between array indexing
+#define MAX_INTERVAL_MS 2000 // maximum interval in milliseconds between array indexing
 
 #define TRACK_LENGTH 20
 
@@ -24,8 +24,8 @@ char String[25];
 
 int channel;
 
-volatile int count = 0;
-int targetCount = 0;
+int count = 0;
+int targetCount = 0; // THIS SHOULDNT BE VOLATILE
 
 volatile int record1_armed = 0;
 volatile int record1 = 0;
@@ -222,7 +222,7 @@ void process_midi_data(uint8_t midi_byte) {
     }
 
     if (bytes_received == 3) {
-        // We have received a complete MIDI message
+        // We have recei ved a complete MIDI message
         process_midi_message(status_byte, data_byte1, data_byte2);
         bytes_received = 0;
     }
@@ -240,7 +240,7 @@ void process_midi_data(uint8_t midi_byte) {
 
 ISR(TIMER1_COMPA_vect) {
 
-    if (count == 1) {
+    if (count == targetCount) {
         // Timer1 compare interrupt service routin
         if (step == 0 && record1_armed) {
 //            char printArm[25];
@@ -255,11 +255,10 @@ ISR(TIMER1_COMPA_vect) {
             record1_armed = 0;
         }
 
-
-//        char printStep[50];
-//        sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u record1_armed: %d record1: %d \n\n",
-//                step, ADC, OCR1A, record1_armed, record1);
-//        UART_putstring(printStep);
+        char printStep[100];
+        sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u record1_armed: %d record1: %d\n\n",
+                step, ADC, OCR1A, record1_armed, record1);
+        UART_putstring(printStep);
 
         // Do something with the midi signal at the current step, for example:
 //    char printNote[25];
@@ -289,21 +288,6 @@ long map(long x, long in_min, long in_max, long out_min, long out_max) {
 int main(void)
 {
     Initialize();
-    int loopLength = 10;
-    int counter = 0;
-    int seqLength = 5;
-    // 0x2E Bb
-    // 0x30 C 3
-    // 0x23 B 1
-    // 0x21 A 1
-    // 0x34 E 3
-//    int track[3][5] = {
-//            {0x2E, 0x30, 0x23, 0x21, 0x34},
-//            {0x30, 0x30, 0x23, 0x21, 0x34},
-//            {0x23, 0x23, 0x23, 0x21, 0x34}
-//    };
-    int velocity = 0x45;
-    int sequence[300];
     while(1)
     {
 //        int printTrack[25];
@@ -314,17 +298,49 @@ int main(void)
 //        sprintf(printADC, "ADC: %u\n", ADC);
 //        UART_putstring(printADC);
 
-//        int interval = map(ADC, 0, 1023, MIN_INTERVAL_MS, MAX_INTERVAL_MS);
+        int interval = map(ADC, 0, 1023, MIN_INTERVAL_MS, MAX_INTERVAL_MS);
+
 //        int printInterval[25];
 //        sprintf(printInterval, "INTERVAL: %d\n", interval);
 //        UART_putstring(printInterval);
+//        _delay_ms(1000);
 
         // 10000 * 16M / 1000 / 64 -1 = 2.5 million
         // 1000 => 250K
-//        targetCount = interval / ((OCR1A + 1) * 64 / F_CPU * 1000);
-//        int printTarget[25];
-//        sprintf(printTarget, "INTERVAL: %d\n", printTarget);
+        // OCR1A = 65535
+        // interval / 262.144 = 3.814
+
+//        char printCPU[25];
+//        sprintf(printCPU, "CPU: %u\n", F_CPU); // 9216??
+//        UART_putstring(printCPU);
+//        _delay_ms(100);
+
+//        char printO[25];
+//        sprintf(printO, "OCR1A: %u\n", OCR1A);
+//        UART_putstring(printO);
+//        _delay_ms(100);
+
+        uint32_t OCR1A_uint = (uint32_t) OCR1A;
+        int ms = ((OCR1A_uint + 1) * 64 * 1000 / F_CPU); // 262 ms
+
+//        char printMs[25];
+//        sprintf(printMs, "printMs: %u\n", ms);
+//        UART_putstring(printMs);
+////        _delay_ms(1000);
+
+        targetCount = interval / ms;
+
+        unsigned char data = UART_receive();
+
+        process_midi_data(data);
+
+//
+//        char printTarget[25];
+//        sprintf(printTarget, "targetCount: %d\n", targetCount);
 //        UART_putstring(printTarget);
+//        _delay_ms(1000);
+
+
 
 //        OCR1A = interval * (F_CPU / 1000) / 64 - 1;
 
@@ -332,12 +348,9 @@ int main(void)
 //        sprintf(printOCR1A,  "OCR1A: %u\n", OCR1A);
 //        UART_putstring(printOCR1A);
 
-        unsigned char data = UART_receive();
-
 //        char printData[25];
 //        sprintf(printData, "DATA: %X\n", data);
 //        UART_putstring(printData);
 
-        process_midi_data(data);
     }
 }
