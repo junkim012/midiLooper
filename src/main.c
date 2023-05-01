@@ -15,10 +15,10 @@
 // does prescaler need to change?
 #define BAUD_PRESCALER (((F_CPU / (BAUD_RATE * 16UL))) - 1)
 //#define BAUD_PRESCALER 31
-#define MIN_INTERVAL_MS 50 // minimum interval in milliseconds between array indexing
-#define MAX_INTERVAL_MS 1000 // maximum interval in milliseconds between array indexing
+#define MIN_INTERVAL_MS 100 // minimum interval in milliseconds between array indexing
+#define MAX_INTERVAL_MS 2000 // maximum interval in milliseconds between array indexing
 
-#define TRACK_LENGTH 100
+#define TRACK_LENGTH 20
 
 char String[25];
 
@@ -132,7 +132,7 @@ void Initialize() {
     // TIMER for BPM
     // CTC on OCR1A
     // OCR1A 65535 => 232 ms 9362 => 33 ms
-    OCR1A = 9362; // 16.384 miliseconds
+    OCR1A = 65535;
     TCCR1A = 0;
     TCCR1B = 0;
     TCNT1 = 0;
@@ -261,9 +261,9 @@ ISR(TIMER1_COMPA_vect) {
 //    char printCount[25];
 //    sprintf(printCount, "COUNT: %d TARGET: %d\n", count, targetCount);
 //    UART_putstring(printCount);
-    char printCount[25];
-    sprintf(printCount, "TIMER ISR\n");
-    UART_putstring(printCount);
+//    char printCount[25];
+//    sprintf(printCount, "TIMER ISR\n");
+//    UART_putstring(printCount);
     if (count >= targetCount) {
         // Timer1 compare interrupt service routin
         if (step == 0 && (record1_armed || record2_armed || record3_armed)) {
