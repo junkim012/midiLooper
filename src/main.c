@@ -15,10 +15,11 @@
 // does prescaler need to change?
 #define BAUD_PRESCALER (((F_CPU / (BAUD_RATE * 16UL))) - 1)
 //#define BAUD_PRESCALER 31
-#define MIN_INTERVAL_MS 100 // minimum interval in milliseconds between array indexing
-#define MAX_INTERVAL_MS 2000 // maximum interval in milliseconds between array indexing
+#define MIN_INTERVAL_MS 5 // minimum interval in milliseconds between array indexing
+#define MAX_INTERVAL_MS 250 // maximum interval in milliseconds between array indexing
 
-#define TRACK_LENGTH 666
+#define OCR1A_VALUE 936
+#define TRACK_LENGTH 250 // 250 ~ 300 maximum
 
 char String[25];
 
@@ -128,8 +129,8 @@ void Initialize() {
 
     // TIMER for BPM
     // CTC on OCR1A
-    // OCR1A 65535 => 232 ms 9362 => 33 ms
-    OCR1A = 65535;
+    // OCR1A 65535 => 232 ms 9362 => 33 ms 936 => 3.3ms 10 => 0.035ms
+    OCR1A = OCR1A_VALUE;
     TCCR1A = 0;
     TCCR1B = 0;
     TCNT1 = 0;
@@ -182,6 +183,7 @@ void process_midi_message(uint8_t status_byte, uint8_t data_byte1, uint8_t data_
         char printData[25];
 //        sprintf(printData, "ON: %X %X %X\n", status_byte, data_byte1, data_byte2);
 //        UART_putstring(printData);
+
         UART_send(status_byte); // 1 byte
         UART_send(data_byte1); // 1 byte
         UART_send(data_byte2); // 1 byte
@@ -275,7 +277,7 @@ ISR(TIMER1_COMPA_vect) {
             record1 = record1_armed ? 1 : 0;
             // turn on record light
             PORTD |= (1 << PORTD5); // but this turns on when we go from step 0 to 1 for some reason
-        } else if (step == 19 && (record1 == 1 || record2 == 1 || record3 == 1)) {
+        } else if (step == (TRACK_LENGTH - 1) && (record1 == 1 || record2 == 1 || record3 == 1)) {
 //            char printStop[25];
 //            sprintf(printStop, "RECORDS STOP");
 //            UART_putstring(printStop);
@@ -336,6 +338,7 @@ int main(void)
 //            sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u record1_armed: %d record1: %d count: %d targetCount: %d\n\n",
 //                    step, ADC, OCR1A, record1_armed, record1, count, targetCount);
 //            UART_putstring(printStep);
+
 //            char printTrack[100];
 //            sprintf(printTrack, "NOTES: %X %X %X\n\n", track1[step][0], track1[step][1], track1[step][2]);
 //            UART_putstring(printTrack);
