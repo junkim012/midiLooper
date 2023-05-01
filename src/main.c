@@ -19,11 +19,9 @@
 #define MAX_INTERVAL_MS 250 // maximum interval in milliseconds between array indexing
 
 #define OCR1A_VALUE 936
-#define TRACK_LENGTH 250 // 250 ~ 300 maximum
+#define TRACK_LENGTH 80 // 250 ~ 300 maximum
 
 char String[25];
-
-int channel;
 
 volatile int count = 0;
 volatile int targetCount = 0;
@@ -49,8 +47,8 @@ volatile int playTrack = 0;
 //        {0x00, 0x00, 0x00}
 //};
 int track1[TRACK_LENGTH][3];
-//int track2[TRACK_LENGTH][3];
-//int track3[TRACK_LENGTH][3];
+int track2[TRACK_LENGTH][3];
+int track3[TRACK_LENGTH][3];
 volatile int step; // volatile?
 
 // timing stuff
@@ -61,27 +59,23 @@ ISR(PCINT0_vect) {
     if (PINB & (1 << PINB0)) {
         record1_armed = 1;
 
-        PORTD |= (1 << PORTD2);
-        PORTD &= ~(1 << PORTD3);
-//        PORTD &= ~(1 << PORTD5);
-        PORTD &= ~(1 << PORTD4);
-        channel = 0x91; // switch channel to 2
-    } else if (PINB & (1 << PINB1)) {
+        PORTD |= (1 << PORTD2); // on
+//        PORTD &= ~(1 << PORTD3);
+//        PORTD &= ~(1 << PORTD4);
+    }
+    if (PINB & (1 << PINB1)) {
         record2_armed = 1;
 
-        PORTD |= (1 << PORTD3);
-//        PORTD &= ~(1 << PORTD5);
-        PORTD &= ~(1 << PORTD2);
-        PORTD &= ~(1 << PORTD4);
-        channel = 0x91; // switch channel to 2
-    } else if (PINB & (1 << PINB2)) {
+        PORTD |= (1 << PORTD3); // on
+//        PORTD &= ~(1 << PORTD2);
+//        PORTD &= ~(1 << PORTD4);
+    }
+    if (PINB & (1 << PINB2)) {
         record3_armed = 1;
 
-        PORTD |= (1 << PORTD4);
-//        PORTD &= ~(1 << PORTD5);
-        PORTD &= ~(1 << PORTD3);
-        PORTD &= ~(1 << PORTD2);
-        channel = 0x92; // switch channel to 3
+        PORTD |= (1 << PORTD4); // on
+//        PORTD &= ~(1 << PORTD3);
+//        PORTD &= ~(1 << PORTD2);
     }
 }
 
@@ -184,7 +178,7 @@ void process_midi_message(uint8_t status_byte, uint8_t data_byte1, uint8_t data_
 //        sprintf(printData, "ON: %X %X %X\n", status_byte, data_byte1, data_byte2);
 //        UART_putstring(printData);
 
-        UART_send(status_byte); // 1 byte
+        UART_send(status_byte); // 1 byte always channel 4?
         UART_send(data_byte1); // 1 byte
         UART_send(data_byte2); // 1 byte
 
@@ -195,20 +189,21 @@ void process_midi_message(uint8_t status_byte, uint8_t data_byte1, uint8_t data_
 //            char printRecord[25];
 //            sprintf(printRecord, "RECORDING NOTE %X at STEP %d\n", data_byte1, step);
 //            UART_putstring(printRecord);
-            track1[step][0] = status_byte;
+            // fix channel to status_byte
+            track1[step][0] = (status_byte & 0xF0); // always channel 1
             track1[step][1] = data_byte1;
             track1[step][2] = data_byte2;
         }
-//        if (record2 == 1) {
-//            track2[step][0] = status_byte;
-//            track2[step][1] = data_byte1;
-//            track2[step][2] = data_byte2;
-//        }
-//        if (record3 == 1) {
-//            track3[step][0] = status_byte;
-//            track3[step][1] = data_byte1;
-//            track3[step][2] = data_byte2;
-//        }
+        if (record2 == 1) {
+            track2[step][0] = (status_byte & 0xF0) | 0x01; // always channel 2
+            track2[step][1] = data_byte1;
+            track2[step][2] = data_byte2;
+        }
+        if (record3 == 1) {
+            track3[step][0] = (status_byte & 0xF0) | 0x02; // always channel 3
+            track3[step][1] = data_byte1;
+            track3[step][2] = data_byte2;
+        }
 
     }
 }
@@ -269,12 +264,14 @@ ISR(TIMER1_COMPA_vect) {
 //    sprintf(printCount, "STEP: %d\n", step);
 //    UART_putstring(printCount);
     if (count >= targetCount) {
-        // Timer1 compare interrupt service routin
-        if (step == 0 && (record1_armed)) {
+        // Timer1 compare interrupt service routine
+        if (step == 0 && (record1_armed || record2_armed || record3_armed)) {
 //            char printArm[25];
 //            sprintf(printArm, "RECORD START");
 //            UART_putstring(printArm);
             record1 = record1_armed ? 1 : 0;
+            record2 = record2_armed ? 1 : 0;
+            record3 = record3_armed ? 1 : 0;
             // turn on record light
             PORTD |= (1 << PORTD5); // but this turns on when we go from step 0 to 1 for some reason
         } else if (step == (TRACK_LENGTH - 1) && (record1 == 1 || record2 == 1 || record3 == 1)) {
@@ -287,14 +284,16 @@ ISR(TIMER1_COMPA_vect) {
             }
             if (record2 == 1) {
                 record2_armed = 0;
+                PORTD &= ~(1 << PORTD3); // turn off arm light
             }
             if (record3 == 1) {
                 record3_armed = 0;
+                PORTD &= ~(1 << PORTD4); // turn off arm light
             }
             record1 = 0;
-            PORTD &= ~(1 << PORTD5); // turn off record light
             record2 = 0;
             record3 = 0;
+            PORTD &= ~(1 << PORTD5); // turn off record light
         }
         // set playTrack flag
         playTrack = 1;
@@ -335,29 +334,34 @@ int main(void)
         // STEP INCREMENT ISR
         if (playTrack) {
 //            char printStep[100];
-//            sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u record1_armed: %d record1: %d count: %d targetCount: %d\n\n",
-//                    step, ADC, OCR1A, record1_armed, record1, count, targetCount);
+//            sprintf(printStep, "STEP: %d, ADC: %u, OCR1A: %u count: %d targetCount: %d\n\n",
+//                    step, ADC, OCR1A, count, targetCount);
 //            UART_putstring(printStep);
+//            char printRecord[100];
+//            sprintf(printRecord, "record1_armed: %d record1: %d record2_armed: %d record2: %d record3_armed: %d record3: %d \n\n",
+//                    record1_armed, record1, record2_armed, record2, record3_armed, record3);
+//            UART_putstring(printRecord);
 
 //            char printTrack[100];
 //            sprintf(printTrack, "NOTES: %X %X %X\n\n", track1[step][0], track1[step][1], track1[step][2]);
 //            UART_putstring(printTrack);
+
             // always play what's in the track
             if (track1[step][0] >> 4 == 9 || track1[step][0] >> 4 == 8) {
                 UART_send(track1[step][0]);
                 UART_send(track1[step][1]);
                 UART_send(track1[step][2]);
             }
-//            if (track2[step][0] >> 4 == 9 || track2[step][0] >> 4 == 8) {
-//                UART_send(track2[step][0]);
-//                UART_send(track2[step][1]);
-//                UART_send(track2[step][2]);
-//            }
-//            if (track3[step][0] >> 4 == 9 || track3[step][0] >> 4 == 8) {
-//                UART_send(track3[step][0]);
-//                UART_send(track3[step][1]);
-//                UART_send(track3[step][2]);
-//            }
+            if (track2[step][0] >> 4 == 9 || track2[step][0] >> 4 == 8) {
+                UART_send(track2[step][0]);
+                UART_send(track2[step][1]);
+                UART_send(track2[step][2]);
+            }
+            if (track3[step][0] >> 4 == 9 || track3[step][0] >> 4 == 8) {
+                UART_send(track3[step][0]);
+                UART_send(track3[step][1]);
+                UART_send(track3[step][2]);
+            }
             playTrack = 0;
             // what if the UART_send here doesn't complete before the next step increment?
             // think it's fine
@@ -368,9 +372,5 @@ int main(void)
             data = UDR0;
             process_midi_data(data);
         }
-
-//        char printPlay[25];
-//        sprintf(printPlay, "PLAY: %d\n\n", playTrack);
-//        UART_putstring(printPlay);
     }
 }
