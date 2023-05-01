@@ -15,17 +15,17 @@
 // does prescaler need to change?
 #define BAUD_PRESCALER (((F_CPU / (BAUD_RATE * 16UL))) - 1)
 //#define BAUD_PRESCALER 31
-#define MIN_INTERVAL_MS 100 // minimum interval in milliseconds between array indexing
-#define MAX_INTERVAL_MS 2000 // maximum interval in milliseconds between array indexing
+#define MIN_INTERVAL_MS 50 // minimum interval in milliseconds between array indexing
+#define MAX_INTERVAL_MS 1000 // maximum interval in milliseconds between array indexing
 
-#define TRACK_LENGTH 20
+#define TRACK_LENGTH 100
 
 char String[25];
 
 int channel;
 
 volatile int count = 0;
-int targetCount = 3;
+int targetCount = 0;
 
 volatile int record1_armed = 0;
 volatile int record1 = 0;
@@ -131,7 +131,8 @@ void Initialize() {
 
     // TIMER for BPM
     // CTC on OCR1A
-    OCR1A = 65535; // 16.384 miliseconds
+    // OCR1A 65535 => 232 ms 9362 => 33 ms
+    OCR1A = 9362; // 16.384 miliseconds
     TCCR1A = 0;
     TCCR1B = 0;
     TCNT1 = 0;
@@ -333,7 +334,6 @@ ISR(ADC_vect) {
     uint32_t OCR1A_uint = (uint32_t) OCR1A;
     int ms = ((OCR1A_uint + 1) * 64 * 1000 / F_CPU); // 262 ms
     targetCount = interval / ms;
-
 }
 
 int main(void)
@@ -341,18 +341,6 @@ int main(void)
     Initialize();
     // set count to initial targetCount to immediately start at step 0?
 
-    // 0x2E Bb
-    // 0x30 C 3
-    // 0x23 B 1
-    // 0x21 A 1
-    // 0x34 E 3
-//    int track[3][5] = {
-//            {0x2E, 0x30, 0x23, 0x21, 0x34},
-//            {0x30, 0x30, 0x23, 0x21, 0x34},
-//            {0x23, 0x23, 0x23, 0x21, 0x34}
-//    };
-    int velocity = 0x45;
-    int sequence[300];
     while(1)
     {
 //        int printTrack[25];
